@@ -15,4 +15,8 @@ npm i axios dotenv
 ```bash
 nano .env
 ```
+### Start bot
+```npm
+node index.js
+```
 # Then Enjoy Your bot
