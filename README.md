@@ -1,6 +1,6 @@
 # HydrenBot
 ## This Bot Gives the Information of Your HydrenDashboard
-## Main command /me 
+## Main command /me , /addcoins
 ### How to Install 
 ```bash
 git clone https://github.com/hydren-dev/HydrenBot.git
