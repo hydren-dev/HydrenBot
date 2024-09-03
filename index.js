@@ -38,8 +38,20 @@ client.on('ready', async () => {
                 .setRequired(true)
         );
 
+    // Register /nodes command
+    const nodesCommand = new SlashCommandBuilder()
+        .setName('nodes')
+        .setDescription('Get information about all nodes');
+
+    // Register /images command
+    const imagesCommand = new SlashCommandBuilder()
+        .setName('images')
+        .setDescription('Get information about all images');
+
     await commands.create(meCommand);
     await commands.create(addCoinsCommand);
+    await commands.create(nodesCommand);
+    await commands.create(imagesCommand);
 
     console.log('Started the Bot And Registered the Commands.');
 
@@ -129,6 +141,66 @@ client.on('interactionCreate', async interaction => {
         } catch (error) {
             console.error(error);
             await interaction.reply('An error occurred while adding coins.');
+        }
+    } else if (commandName === 'nodes') {
+        try {
+            // Fetch nodes information
+            const nodesResponse = await axios.get(`${process.env.HYDREN_DASHBOARD_URL}/api/application/nodes`, {
+                params: {
+                    key: process.env.HYDREN_DASHBOARD_KEY,
+                },
+            });
+
+            const nodes = nodesResponse.data;
+
+            // Create embeds for each node
+            const embeds = nodes.map(node => new EmbedBuilder()
+                .setColor(0x0099FF)
+                .setTitle(`Node: ${node.name}`)
+                .addFields(
+                    { name: 'Processor', value: node.processor || 'N/A', inline: true },
+                    { name: 'RAM', value: node.ram || 'N/A', inline: true },
+                    { name: 'Disk', value: node.disk || 'N/A', inline: true },
+                )
+                .setFooter({ text: `Node ID: ${node.id}` })
+                .setTimestamp()
+            );
+
+            // Send the embed messages
+            await interaction.reply({ embeds: embeds });
+
+        } catch (error) {
+            console.error(error);
+            await interaction.reply({ content: 'An error occurred while fetching the nodes.', ephemeral: true });
+        }
+    } else if (commandName === 'images') {
+        try {
+            // Fetch images information
+            const imagesResponse = await axios.get(`${process.env.HYDREN_DASHBOARD_URL}/api/application/images`, {
+                params: {
+                    key: process.env.HYDREN_DASHBOARD_KEY,
+                },
+            });
+
+            const images = imagesResponse.data;
+
+            // Create embeds for each image
+            const embeds = images.map(image => new EmbedBuilder()
+                .setColor(0x0099FF)
+                .setTitle(`Image: ${image.Name}`)
+                .addFields(
+                    { name: 'Image', value: image.Image || 'N/A', inline: true }
+                )
+                .setFooter({ text: `Image ID: ${image.Id}` })
+                .setTimestamp()
+            );
+
+            // Send the embed messages
+            await interaction.reply({ embeds: embeds });
+
+        } catch (error) {
+            console.error(error);
+            await interaction.reply({ content: 'An error occurred while fetching the images.', ephemeral: true });
         }
     }
 });
