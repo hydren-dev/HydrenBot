@@ -1,209 +1,132 @@
-require('dotenv').config(); // Load environment variables
-const { Client, GatewayIntentBits, EmbedBuilder, SlashCommandBuilder, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const axios = require('axios');
+const dotenv = require('dotenv');
+const {
+    setEmail,
+    getEmail,
+    setDailyClaimed,
+    isDailyClaimed,
+    setCoins,
+    getCoins,
+    setWeeklyClaimed,
+    isWeeklyClaimed,
+} = require('./db'); // Import your db functions
 
-// Create a new client instance
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// Load environment variables
+dotenv.config();
 
-// Convert the USERS_ID string from the .env file to an array of IDs
-const allowedUserIds = process.env.USERS_ID.split(',');
-
-// Slash command setup
-client.on('ready', async () => {
-    const guild = await client.guilds.fetch(process.env.GUILD_ID);
-    const commands = guild.commands;
-
-    // Register /me command
-    const meCommand = new SlashCommandBuilder()
-        .setName('me')
-        .setDescription('Fetch user info based on email')
-        .addStringOption(option =>
-            option.setName('email')
-                .setDescription('The email of the user')
-                .setRequired(true)
-        );
-
-    // Register /addcoins command
-    const addCoinsCommand = new SlashCommandBuilder()
-        .setName('addcoins')
-        .setDescription('Add coins to a user')
-        .addStringOption(option =>
-            option.setName('email')
-                .setDescription('The email of the user')
-                .setRequired(true)
-        )
-        .addIntegerOption(option =>
-            option.setName('coins')
-                .setDescription('The number of coins to add')
-                .setRequired(true)
-        );
-
-    // Register /nodes command
-    const nodesCommand = new SlashCommandBuilder()
-        .setName('nodes')
-        .setDescription('Get information about all nodes');
-
-    // Register /images command
-    const imagesCommand = new SlashCommandBuilder()
-        .setName('images')
-        .setDescription('Get information about all images');
-
-    await commands.create(meCommand);
-    await commands.create(addCoinsCommand);
-    await commands.create(nodesCommand);
-    await commands.create(imagesCommand);
-
-    console.log('Started the Bot And Registered the Commands.');
-
-    // Set bot status
-    const statusType = process.env.STATUS_TYPE;
-    const status = process.env.STATUS;
-    if (statusType && status) {
-        client.user.setActivity(status, { type: ActivityType[statusType] });
-        console.log(`Status set to ${statusType} ${status}`);
-    }
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
-// Respond to slash commands
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isCommand()) return;
+client.on('ready', () => {
+    console.log('Bot is online!');
+});
 
-    const { commandName, options, user } = interaction;
+// Bot command handling
 
-    if (commandName === 'me') {
-        const email = options.getString('email');
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
 
-        try {
-            // Fetch user info
-            const userInfoResponse = await axios.get(`${process.env.HYDREN_DASHBOARD_URL}/api/application/user/info`, {
-                params: {
-                    key: process.env.HYDREN_DASHBOARD_KEY,
-                    email: email,
-                },
-            });
-            const userInfo = userInfoResponse.data;
+    const args = message.content.trim().split(/\s+/);
+    const command = args[0].toLowerCase();
+    const email = args.slice(1).join(' ');
 
-            // Fetch user coins
-            const coinsResponse = await axios.get(`${process.env.HYDREN_DASHBOARD_URL}/api/application/user/coins`, {
-                params: {
-                    key: process.env.HYDREN_DASHBOARD_KEY,
-                    email: email,
-                },
-            });
-            const coins = coinsResponse.data.coins;
+    if (!command.startsWith(process.env.PREFIX)) return;
 
-            // Ensure all numeric values are converted to strings
-            const embed = new EmbedBuilder()
-                .setColor(0x0099FF)
-                .setTitle('User Info')
-                .addFields(
-                    { name: 'UserID', value: userInfo.id?.toString() || 'N/A', inline: true },
-                    { name: 'CPU', value: userInfo.cpu?.toString() || 'N/A', inline: true },
-                    { name: 'RAM', value: userInfo.ram?.toString() || 'N/A', inline: true },
-                    { name: 'Disk', value: userInfo.disk?.toString() || 'N/A', inline: true },
-                    { name: 'Email', value: email, inline: true },
-                    { name: 'Coins', value: coins?.toString() || 'N/A', inline: true },
-                )
-                .setTimestamp();
+    const userId = message.author.id;
 
-            // Send the embed message
-            await interaction.reply({ embeds: [embed] });
-
-        } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: 'An error occurred while fetching the data.', ephemeral: true });
-        }
-    } else if (commandName === 'addcoins') {
-        // Check if the user is allowed to use the command
-        if (!allowedUserIds.includes(user.id)) {
-            await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-            return;
+   if (command === `${process.env.PREFIX}!mine` && args[1] === 'daily') {
+        const alreadyClaimed = await isDailyClaimed(userId);
+        if (alreadyClaimed) {
+            return message.channel.send('You have already claimed your daily coins.');
         }
 
-        const email = options.getString('email');
-        const coins = options.getInteger('coins');
+        const coins = Math.floor(Math.random() * (50 - 20 + 1)) + 20;
+
+        const userEmail = await getEmail(userId);
+        if (!userEmail) {
+            return message.channel.send('Your email is not connected. Please connect it using `prefix!connect [email]`.');
+        }
 
         try {
-            // Send request to add coins
-            const response = await axios.get(`${process.env.HYDREN_DASHBOARD_URL}/api/addcoins`, {
+            await axios.get(`${process.env.HYDREN_URL}/api/addcoins`, {
                 params: {
-                    email,
+                    key: process.env.HYDREN_KEY,
                     coins,
-                    key: process.env.HYDREN_DASHBOARD_KEY
-                }
-            });
-
-            if (response.status === 200) {
-                await interaction.reply(`Successfully added ${coins} coins to ${email}`);
-            } else {
-                await interaction.reply('Failed to add coins. Please try again.');
-            }
-        } catch (error) {
-            console.error(error);
-            await interaction.reply('An error occurred while adding coins.');
-        }
-    } else if (commandName === 'nodes') {
-        try {
-            // Fetch nodes information
-            const nodesResponse = await axios.get(`${process.env.HYDREN_DASHBOARD_URL}/api/application/nodes`, {
-                params: {
-                    key: process.env.HYDREN_DASHBOARD_KEY,
+                    email: userEmail,
                 },
             });
-
-            const nodes = nodesResponse.data;
-
-            // Create embeds for each node
-            const embeds = nodes.map(node => new EmbedBuilder()
-                .setColor(0x0099FF)
-                .setTitle(`Node: ${node.name}`)
-                .addFields(
-                    { name: 'Processor', value: node.processor || 'N/A', inline: true },
-                    { name: 'RAM', value: node.ram || 'N/A', inline: true },
-                    { name: 'Disk', value: node.disk || 'N/A', inline: true },
-                )
-                .setFooter({ text: `Node ID: ${node.id}` })
-                .setTimestamp()
-            );
-
-            // Send the embed messages
-            await interaction.reply({ embeds: embeds });
-
         } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: 'An error occurred while fetching the nodes.', ephemeral: true });
+            console.error('Error adding coins:', error);
+            return message.channel.send('There was an error adding your coins. Please try again later.');
         }
-    } else if (commandName === 'images') {
+
+        await setDailyClaimed(userId);
+        await setCoins(userId, coins);
+
+        const embed = new EmbedBuilder()
+            .setTitle('Daily Mine')
+            .setDescription(`You have mined your daily coins!\nYou now have ${coins} coins.`)
+            .setColor('#FFD700');
+
+        message.channel.send({ embeds: [embed] });
+    }
+
+     if (command === `${process.env.PREFIX}!mine` && args[1] === 'weekly') {
+        const alreadyClaimed = await isWeeklyClaimed(userId); // Check weekly claim status
+        if (alreadyClaimed) {
+            return message.channel.send('You have already claimed your weekly coins.');
+        }
+
+        const coins = Math.floor(Math.random() * (100 - 50 + 1)) + 50; // Adjusted for randomness
+        const userEmail = await getEmail(userId);
+        if (!userEmail) {
+            return message.channel.send('Your email is not connected. Please connect it using `prefix!connect [email]`.');
+        }
+
         try {
-            // Fetch images information
-            const imagesResponse = await axios.get(`${process.env.HYDREN_DASHBOARD_URL}/api/application/images`, {
+            await axios.get(`${process.env.HYDREN_URL}/api/addcoins`, {
                 params: {
-                    key: process.env.HYDREN_DASHBOARD_KEY,
+                    key: process.env.HYDREN_KEY,
+                    coins,
+                    email: userEmail,
                 },
             });
-
-            const images = imagesResponse.data;
-
-            // Create embeds for each image
-            const embeds = images.map(image => new EmbedBuilder()
-                .setColor(0x0099FF)
-                .setTitle(`Image: ${image.Name}`)
-                .addFields(
-                    { name: 'Image', value: image.Image || 'N/A', inline: true }
-                )
-                .setFooter({ text: `Image ID: ${image.Id}` })
-                .setTimestamp()
-            );
-
-            // Send the embed messages
-            await interaction.reply({ embeds: embeds });
-
         } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: 'An error occurred while fetching the images.', ephemeral: true });
+            console.error('Error adding coins:', error);
+            return message.channel.send('There was an error adding your coins. Please try again later.');
         }
+
+        await setWeeklyClaimed(userId); // Mark weekly claim
+        await setCoins(userId, coins);
+
+        const embed = new EmbedBuilder()
+            .setTitle('Weekly Mine')
+            .setDescription(`You have mined your weekly coins!\nYou now have ${coins} coins.`)
+            .setColor('#FFD700');
+
+        message.channel.send({ embeds: [embed] });
+    }
+
+    if (command === `${process.env.PREFIX}!connect`) {
+        if (!email) {
+            return message.channel.send('Please provide an email to connect.');
+        }
+
+        await setEmail(userId, email);
+        message.channel.send(`Your email has been connected: ${email}`);
+    }
+
+    if (command === `${process.env.PREFIX}!links`) {
+        const embed = new EmbedBuilder()
+            .setTitle('Links')
+            .setDescription(`Here is the Dashboard URL: [ClickME](${process.env.HYDREN_URL})`)
+            .setColor('#00FF00'); // You can change the color as needed
+
+        message.channel.send({ embeds: [embed] });
     }
 });
 
-// Log in to Discord with your client's token
-client.login(process.env.DISCORD_BOT_TOKEN);
+// Start the bot
+client.login(process.env.TOKEN);
