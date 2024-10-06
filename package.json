@@ -1,0 +1,18 @@
+{
+  "name": "hydren-discord-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^0.27.2",
+    "discord.js": "^14.0.0",
+    "dotenv": "^10.0.0",
+    "@keyv/sqlite": "^3.6.7",
+    "keyv": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
